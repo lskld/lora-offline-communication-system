@@ -52,8 +52,13 @@ U8G2_SSD1306_128X64_NONAME_F_HW_I2C display(U8G2_R0, OLED_RST, OLED_SCL, OLED_SD
 SX1262 radio = new Module(LORA_CS, LORA_DIO1, LORA_RST, LORA_BUSY);
 bool radioReady = false;
 
+// Set from the DIO1 interrupt when the radio has received a packet
+volatile bool packetReceived = false;
+
 // Short status line shown at the bottom of the OLED (e.g. "Sent!")
 char statusText[24] = "";
+// Last received message line, e.g. "<< HELP -45dBm"
+char receivedText[24] = "";
 
 // ---- Button debounce state ----
 const unsigned long DEBOUNCE_MS = 200;
@@ -91,9 +96,10 @@ void drawScreen() {
   int w = (int)display.getStrWidth(msg);
   int x = (128 - w) / 2;
   if (x < 0) x = 0;
-  display.drawStr(x, 44, msg);
-  // status line, small font, bottom
+  display.drawStr(x, 34, msg);
+  // last received message and status line, small font, bottom
   display.setFont(u8g2_font_6x10_tr);
+  display.drawStr(0, 52, receivedText);
   display.drawStr(0, 63, statusText);
   display.sendBuffer();
 }
@@ -123,6 +129,33 @@ void sendCurrentMessage() {
     Serial.printf("Send failed, code %d\n", state);
     snprintf(statusText, sizeof(statusText), "Send error %d", state);
   }
+  // transmit() also fires DIO1 (TX done); ignore that and go back to listening
+  packetReceived = false;
+  radio.startReceive();
+  drawScreen();
+}
+
+void IRAM_ATTR onPacketReceived() {
+  packetReceived = true;
+}
+
+void handleReceivedPacket() {
+  packetReceived = false;
+  String msg;
+  int state = radio.readData(msg);
+  if (state == RADIOLIB_ERR_NONE) {
+    float rssi = radio.getRSSI();
+    float snr = radio.getSNR();
+    Serial.printf("Received: %s (RSSI %.0f dBm, SNR %.1f dB)\n", msg.c_str(), rssi, snr);
+    snprintf(receivedText, sizeof(receivedText), "<< %s %.0fdBm", msg.c_str(), rssi);
+  } else if (state == RADIOLIB_ERR_CRC_MISMATCH) {
+    Serial.println("Receive failed: CRC mismatch");
+    snprintf(statusText, sizeof(statusText), "RX CRC error");
+  } else {
+    Serial.printf("Receive failed, code %d\n", state);
+    snprintf(statusText, sizeof(statusText), "RX error %d", state);
+  }
+  radio.startReceive();
   drawScreen();
 }
 
@@ -172,8 +205,12 @@ void setup() {
   radio.tcxoVoltage = LORA_TCXO_VOLTAGE;
   int state = radio.begin(config);
   if (state == RADIOLIB_ERR_NONE) {
+    radio.setIrqAction(onPacketReceived);
+    state = radio.startReceive();
+  }
+  if (state == RADIOLIB_ERR_NONE) {
     radioReady = true;
-    Serial.println("Radio ready");
+    Serial.println("Radio ready, listening");
   } else {
     Serial.printf("Radio init failed, code %d\n", state);
     snprintf(statusText, sizeof(statusText), "Radio error %d", state);
@@ -183,6 +220,9 @@ void setup() {
 }
 
 void loop() {
+  if (packetReceived) {
+    handleReceivedPacket();
+  }
   handleNextButton();
   if (buttonPressed(PIN_BUTTON_PREV, rawPrev, stablePrev, lastChangePrev)) {
     selectMessage(currentMessage - 1);
