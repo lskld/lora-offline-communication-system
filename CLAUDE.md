@@ -15,9 +15,10 @@ Behavior:
 
 - Each device is **preloaded with a list of short messages** in the firmware.
 - Each device has **two buttons**:
-  - **Cycle button** — steps through the preloaded messages (wraps around) and
-    shows the currently selected one on the OLED.
-  - **Send button** — transmits the currently selected message over LoRa.
+  - **PRG button (GPIO 0)** — short press steps to the next preloaded message
+    (wraps around); **long press (≥ 1 s) transmits** the selected message
+    over LoRa.
+  - **Prev button (GPIO 4)** — steps to the previous message.
 - When the **other device is in radio range**, it receives the packet and
   **displays the message on its OLED** (and logs it to Serial).
 - No WiFi, internet, or broker involved — pure LoRa (SX1262) link. Both
@@ -32,15 +33,18 @@ Behavior:
   id/pinout differ, update `board` in `platformio.ini` and the pins below.
 - Typical Heltec LoRa 32 V3 pins (verify against your exact board revision
   before wiring; V4 may differ):
-  - LoRa SX1262: SCK 9, MISO 11, MOSI 10, SS/CS 8, RST 12, DIO0/IRQ 14, BUSY 13
+  - LoRa SX1262: SCK 9, MISO 11, MOSI 10, SS/CS 8, RST 12, DIO1/IRQ 14, BUSY 13
+    (these are the `LORA_*` constants in `src/main.cpp`; the radio works with
+    them on our V4 boards' V3-style pinout — verify if TX fails or range is
+    poor, V4 also has an external PA that may need enable pins)
   - OLED (I2C): SDA 17, SCL 18, RST 21; Vext power GPIO 36 (active LOW)
   - Onboard PRG button: GPIO 0 (active LOW)
 - Keep **all pin assignments in one config location** (a `pins.h` in `include/`
   or a clearly marked config block at the top of `src/main.cpp`) so they can be
   changed per board revision in one place. Current buttons: `PIN_BUTTON_NEXT` =
   GPIO 0 (onboard PRG, active LOW) and `PIN_BUTTON_PREV` = GPIO 4 (external
-  button wired to GND, `INPUT_PULLUP`). When LoRa sending is implemented, decide
-  which button (or long-press) triggers send and document it here.
+  button wired to GND, `INPUT_PULLUP`). **PRG short press = next message, PRG
+  long press (≥ 1000 ms, `LONG_PRESS_MS`) = send the selected message.**
 
 ## Software stack and project layout
 
@@ -55,10 +59,13 @@ Behavior:
     selected entry from a preloaded table of 10 short messages (`MESSAGES[]`,
     e.g. "RUN", "HIDE", "BEHIND YOU") as an `n/10` index plus the message
     centered on screen. Two debounced buttons (200 ms, polled in `loop()`)
-    cycle the selection with wrap-around: `PIN_BUTTON_NEXT` = next,
-    `PIN_BUTTON_PREV` = previous. LoRa send/receive is NOT implemented yet
-    (`RadioLib` is included but unused for now). All pins are constants at
-    the top of the file.
+    cycle the selection with wrap-around: `PIN_BUTTON_NEXT` short press =
+    next, `PIN_BUTTON_PREV` = previous. Long press on `PIN_BUTTON_NEXT` sends
+    the selected message with `radio.transmit()` (RadioLib 8, `ConfigLoRa_t`
+    + `radio.begin(config)`). A status line at the bottom of the OLED shows
+    "Sending...", "Sent!", "Send error N" or "Radio error N" (init failure);
+    the same is logged to Serial. LoRa RECEIVE is NOT implemented yet. All
+    pins and radio settings are constants at the top of the file.
   - `include/` — project headers (put shared config/pins here; currently only
     the PlatformIO `README`, no `pins.h` yet)
   - `lib/` — project-private libraries
@@ -70,10 +77,14 @@ Behavior:
 
 - Frequency is region-dependent (e.g. 868.0 MHz in the EU, 915.0 MHz in the
   US, 433 MHz elsewhere) — set it once in the config block.
-- Modem settings (suggested starting point): SF7, BW 125 kHz, CR 4/5, default
-  sync word, modest TX power. Define all of them as constants in the same
-  config location; both devices must use identical values or they will not
-  hear each other.
+- Current settings (constants `LORA_*` at the top of `src/main.cpp`):
+  868 MHz (EU), SF7, BW 125 kHz, CR 4/5, sync word
+  `RADIOLIB_LORA_SYNC_WORD_PRIVATE` (0x12), 10 dBm TX power, preamble 8,
+  TCXO 1.8 V (`radio.tcxoVoltage = Voltage1V8`). Both devices must use
+  identical values or they will not hear each other.
+- RadioLib 8 API note: `begin()` takes a `ConfigLoRa_t` struct with frequency
+  and bandwidth in **Hz** (`RADIOLIB_UNIT_MEGA(868)`, `RADIOLIB_UNIT_KILO(125)`),
+  not the old positional float arguments.
 - Keep messages short — LoRa payloads at these settings should stay well under
   ~100 bytes.
 
@@ -82,21 +93,25 @@ Behavior:
 - **Message table**: a `const char* MESSAGES[]` array near the top of the code.
   Adding/removing a preloaded message = editing that array only.
   _Status: implemented — 10 short messages preloaded._
-- **Buttons**: debounced (polled in `loop()`, 200 ms). Next/prev advance or
-  rewind the index with wrap-around and refresh the OLED; send will call
-  `radio.transmit()` with the selected message.
-  _Status: message cycling implemented (next/prev); send not implemented yet._
-- **Receive**: DIO0 interrupt sets a flag (or poll for a packet); on reception,
+- **Buttons**: debounced (polled in `loop()`, 200 ms). PRG short press =
+  next (registered on release), GPIO 4 = previous, both with wrap-around;
+  PRG long press (≥ 1000 ms) calls `radio.transmit()` with the selected
+  message (fires once per hold).
+  _Status: cycling and send implemented (tested on board A only so far)._
+- **Receive**: DIO1 interrupt sets a flag (or poll for a packet); on reception,
   read the payload as a string, show it on the OLED and print it to Serial.
   _Status: not implemented yet._
-- **OLED UI**: show selected message + index (e.g. `2/10: BEHIND YOU`) and,
-  once receiving works, the last received message.
-  _Status: selected message + index implemented; received-message display pending._
+- **OLED UI**: show selected message + index (e.g. `2/10: BEHIND YOU`), a
+  status line at the bottom (send result / radio error) and, once receiving
+  works, the last received message.
+  _Status: selected message + index + status line implemented; received-message
+  display pending._
 
 ## Build / flash / monitor
 
 - `pio run` — build
-- `pio run -t upload` — flash (same firmware to both devices)
+- `pio run -t upload` — flash (same firmware to both devices; with both
+  boards connected use `--upload-port /dev/ttyUSB0` etc., see `pio device list`)
 - `pio device monitor` — Serial monitor at 115200 baud
 - In VS Code use the PlatformIO IDE extension (see `.vscode/extensions.json`).
 
