@@ -54,6 +54,11 @@ Behavior:
   - `olikraus/U8g2@^2.36.18` — OLED graphics library
 - Layout:
   - `platformio.ini` — env, board, framework, lib_deps
+  - `README.md` — getting-started guide for humans: prerequisites (VS Code +
+    PlatformIO IDE, or `pip install platformio` for the `pio` CLI), USB-serial
+    driver, `pio run` / `pio run -t upload` / `pio device monitor`, wiring and
+    usage of the two buttons (PRG short press = next, PRG long press = send,
+    GPIO 4 = previous), radio settings, troubleshooting
   - `src/main.cpp` — firmware entry point. Current state: powers the OLED via
     Vext (GPIO 36 LOW), initializes U8g2 (SSD1306, HW I2C), and shows the
     selected entry from a preloaded table of 10 short messages (`MESSAGES[]`,
@@ -114,6 +119,8 @@ Behavior:
   boards connected use `--upload-port /dev/ttyUSB0` etc., see `pio device list`)
 - `pio device monitor` — Serial monitor at 115200 baud
 - In VS Code use the PlatformIO IDE extension (see `.vscode/extensions.json`).
+- See `README.md` for the full getting-started guide (environment setup, USB
+  flashing, button usage, troubleshooting).
 
 ## Git hygiene
 
