@@ -37,9 +37,10 @@ Behavior:
   - Onboard PRG button: GPIO 0 (active LOW)
 - Keep **all pin assignments in one config location** (a `pins.h` in `include/`
   or a clearly marked config block at the top of `src/main.cpp`) so they can be
-  changed per board revision in one place. Define `PIN_BUTTON_CYCLE` and
-  `PIN_BUTTON_SEND` there (e.g. PRG button GPIO 0 for one, a free GPIO with
-  `INPUT_PULLUP` for the other).
+  changed per board revision in one place. Current buttons: `PIN_BUTTON_NEXT` =
+  GPIO 0 (onboard PRG, active LOW) and `PIN_BUTTON_PREV` = GPIO 4 (external
+  button wired to GND, `INPUT_PULLUP`). When LoRa sending is implemented, decide
+  which button (or long-press) triggers send and document it here.
 
 ## Software stack and project layout
 
@@ -50,11 +51,14 @@ Behavior:
 - Layout:
   - `platformio.ini` — env, board, framework, lib_deps
   - `src/main.cpp` — firmware entry point. Current state: powers the OLED via
-    Vext (GPIO 36 LOW), initializes U8g2 (SSD1306, HW I2C) and draws
-    "Hello uppsala!", then prints "Redo" to Serial every second. Radio,
-    buttons and message table are not implemented yet. OLED pins
-    (`VEXT_PIN`, `OLED_SDA`, `OLED_SCL`, `OLED_RST`) are defined as constants
-    at the top of the file.
+    Vext (GPIO 36 LOW), initializes U8g2 (SSD1306, HW I2C), and shows the
+    selected entry from a preloaded table of 10 short messages (`MESSAGES[]`,
+    e.g. "RUN", "HIDE", "BEHIND YOU") as an `n/10` index plus the message
+    centered on screen. Two debounced buttons (200 ms, polled in `loop()`)
+    cycle the selection with wrap-around: `PIN_BUTTON_NEXT` = next,
+    `PIN_BUTTON_PREV` = previous. LoRa send/receive is NOT implemented yet
+    (`RadioLib` is included but unused for now). All pins are constants at
+    the top of the file.
   - `include/` — project headers (put shared config/pins here; currently only
     the PlatformIO `README`, no `pins.h` yet)
   - `lib/` — project-private libraries
@@ -77,13 +81,17 @@ Behavior:
 
 - **Message table**: a `const char* MESSAGES[]` array near the top of the code.
   Adding/removing a preloaded message = editing that array only.
-- **Buttons**: debounced (poll in `loop()` or GPIO interrupt). Cycle advances
-  the index with wrap-around and refreshes the OLED; send calls
+  _Status: implemented — 10 short messages preloaded._
+- **Buttons**: debounced (polled in `loop()`, 200 ms). Next/prev advance or
+  rewind the index with wrap-around and refresh the OLED; send will call
   `radio.transmit()` with the selected message.
+  _Status: message cycling implemented (next/prev); send not implemented yet._
 - **Receive**: DIO0 interrupt sets a flag (or poll for a packet); on reception,
   read the payload as a string, show it on the OLED and print it to Serial.
-- **OLED UI**: show selected message + index (e.g. `2/5: On my way`) and the
-  last received message.
+  _Status: not implemented yet._
+- **OLED UI**: show selected message + index (e.g. `2/10: BEHIND YOU`) and,
+  once receiving works, the last received message.
+  _Status: selected message + index implemented; received-message display pending._
 
 ## Build / flash / monitor
 
