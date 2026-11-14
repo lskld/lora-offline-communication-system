@@ -48,9 +48,14 @@ Behavior:
   - `olikraus/U8g2@^2.36.18` — OLED graphics library
 - Layout:
   - `platformio.ini` — env, board, framework, lib_deps
-  - `src/main.cpp` — firmware entry point (currently a stub printing "Redo";
-    the real firmware is not implemented yet)
-  - `include/` — project headers (put shared config/pins here)
+  - `src/main.cpp` — firmware entry point. Current state: powers the OLED via
+    Vext (GPIO 36 LOW), initializes U8g2 (SSD1306, HW I2C) and draws
+    "Hello uppsala!", then prints "Redo" to Serial every second. Radio,
+    buttons and message table are not implemented yet. OLED pins
+    (`VEXT_PIN`, `OLED_SDA`, `OLED_SCL`, `OLED_RST`) are defined as constants
+    at the top of the file.
+  - `include/` — project headers (put shared config/pins here; currently only
+    the PlatformIO `README`, no `pins.h` yet)
   - `lib/` — project-private libraries
   - `test/` — PlatformIO unit tests
   - `.vscode/` — VS Code / PlatformIO IDE settings
