@@ -102,9 +102,9 @@ Behavior:
 
 ## Git hygiene
 
-- `.gitignore` is currently **empty**, so `.pio/` build artifacts got committed.
-  Do not add or modify anything under `.pio/`. When touching `.gitignore`, add
-  `.pio/` (and optionally `.vscode/`) to it.
+- `.gitignore` contains `.pio/`, and the artifacts under `.pio/` have been
+  removed from the git index (files kept on disk) — they are no longer tracked.
+  Never add or modify anything under `.pio/`.
 - Commit only source, config, and docs.
 
 ## Documentation maintenance rule (mandatory)
