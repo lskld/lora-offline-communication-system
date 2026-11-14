@@ -64,8 +64,13 @@ Behavior:
     the selected message with `radio.transmit()` (RadioLib 8, `ConfigLoRa_t`
     + `radio.begin(config)`). A status line at the bottom of the OLED shows
     "Sending...", "Sent!", "Send error N" or "Radio error N" (init failure);
-    the same is logged to Serial. LoRa RECEIVE is NOT implemented yet. All
-    pins and radio settings are constants at the top of the file.
+    the same is logged to Serial. Receive: the radio listens continuously
+    (`radio.setIrqAction()` + `radio.startReceive()`); the DIO1 interrupt
+    sets `packetReceived`, `loop()` reads the packet with `radio.readData()`,
+    shows `<< MSG -45dBm` on the OLED and logs message, RSSI and SNR to
+    Serial, then restarts receive. After each transmit the flag is cleared
+    and receive is restarted. All pins and radio settings are constants at
+    the top of the file.
   - `include/` — project headers (put shared config/pins here; currently only
     the PlatformIO `README`, no `pins.h` yet)
   - `lib/` — project-private libraries
@@ -97,15 +102,16 @@ Behavior:
   next (registered on release), GPIO 4 = previous, both with wrap-around;
   PRG long press (≥ 1000 ms) calls `radio.transmit()` with the selected
   message (fires once per hold).
-  _Status: cycling and send implemented (tested on board A only so far)._
-- **Receive**: DIO1 interrupt sets a flag (or poll for a packet); on reception,
-  read the payload as a string, show it on the OLED and print it to Serial.
-  _Status: not implemented yet._
-- **OLED UI**: show selected message + index (e.g. `2/10: BEHIND YOU`), a
-  status line at the bottom (send result / radio error) and, once receiving
-  works, the last received message.
-  _Status: selected message + index + status line implemented; received-message
-  display pending._
+  _Status: cycling and send implemented._
+- **Receive**: DIO1 interrupt (`setIrqAction`) sets a flag; `loop()` reads
+  the payload as a string, shows it on the OLED with RSSI and prints it to
+  Serial (with RSSI/SNR), then calls `startReceive()` again. CRC errors are
+  shown as "RX CRC error" on the status line.
+  _Status: implemented; not yet verified on hardware between board A and B._
+- **OLED UI**: index `n/10` (top-left), selected message (large, centered,
+  baseline y=34), last received message `<< MSG -45dBm` (y=52) and a status
+  line (y=63: send result / RX error / radio error).
+  _Status: implemented._
 
 ## Build / flash / monitor
 
